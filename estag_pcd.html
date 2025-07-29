@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Relatório de Contratação</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .table-container table {
+            table-layout: fixed;
+        }
+        .table-container th:first-child,
+        .table-container td:first-child {
+            width: 60%;
+            min-width: 200px;
+        }
+        .table-container th:nth-child(2),
+        .table-container td:nth-child(2) {
+            width: 20%;
+        }
+        .table-container th:nth-child(3),
+        .table-container td:nth-child(3) {
+            width: 20%;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">Relatório de Necessidade de Contratação</h1>
+            <p class="mt-2 text-md text-gray-600">Carregue seu arquivo CSV para analisar as vagas de Estagiários e PCD.</p>
+            
+            <!-- Download PDF Button -->
+            <div id="downloadSection" class="hidden mt-4">
+                <button id="downloadPDF" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-300">
+                    <svg class="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Baixar Relatório PDF
+                </button>
+            </div>
+        </header>
+
+        <!-- Input Section -->
+        <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+            <div>
+                <label for="csvFile" class="block text-sm font-medium text-gray-700">Selecione o arquivo CSV</label>
+                <input type="file" id="csvFile" accept=".csv" class="mt-1 block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100
+                "/>
+            </div>
+            <button id="generateReport" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300">
+                Gerar Relatório
+            </button>
+        </div>
+        
+        <!-- Welcome/Instructions Message -->
+        <div id="welcomeMessage" class="text-center mt-8 p-8 bg-white rounded-xl shadow-md">
+             <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2z" />
+            </svg>
+            <h3 class="mt-2 text-lg font-medium text-gray-900">Aguardando arquivo</h3>
+            <p class="mt-1 text-sm text-gray-500">Por favor, selecione seu arquivo CSV e clique em "Gerar Relatório" para começar.</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden mt-10 grid grid-cols-1 lg:grid-cols-1 gap-8">
+            
+            <!-- Interns Section -->
+            <div id="interns-section" class="bg-white p-6 rounded-xl shadow-md hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-900">Relatório de Contratação de Estagiários</h2>
+                <p class="text-sm text-gray-600 mb-4">Empresas com regime diferente de "Simples Nacional" e "Sem Regime", com 7 ou mais funcionários. A cota é de 5% do total de ativos, arredondada para cima.</p>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div class="chart-container">
+                        <canvas id="internsChart"></canvas>
+                    </div>
+                    <div class="table-container border rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Empresa</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ativos</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vagas Estágio</th>
+                                </tr>
+                            </thead>
+                            <tbody id="internsTable" class="bg-white divide-y divide-gray-200">
+                                <!-- Data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Disabilities Section -->
+            <div id="disabilities-section" class="bg-white p-6 rounded-xl shadow-md hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-900">Relatório de Contratação de PCD</h2>
+                <p class="text-sm text-gray-600 mb-4">Empresas com 100 ou mais funcionários. A cota varia de 2% a 5% com base no total de ativos, arredondada para cima.</p>
+                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div class="chart-container">
+                        <canvas id="disabilitiesChart"></canvas>
+                    </div>
+                    <div class="table-container border rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Empresa</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ativos</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vagas PCD</th>
+                                </tr>
+                            </thead>
+                            <tbody id="disabilitiesTable" class="bg-white divide-y divide-gray-200">
+                                <!-- Data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+         <!-- Error Message -->
+        <div id="errorMessage" class="hidden text-center mt-8 p-4 bg-red-100 text-red-700 rounded-lg"></div>
+    </div>
+
+    <script>
+        const csvFileInput = document.getElementById('csvFile');
+        const generateReportBtn = document.getElementById('generateReport');
+        const downloadPDFBtn = document.getElementById('downloadPDF');
+        const downloadSection = document.getElementById('downloadSection');
+        const resultsDiv = document.getElementById('results');
+        const welcomeMessageDiv = document.getElementById('welcomeMessage');
+        const errorMessageDiv = document.getElementById('errorMessage');
+
+        const internsSection = document.getElementById('interns-section');
+        const disabilitiesSection = document.getElementById('disabilities-section');
+        const internsTable = document.getElementById('internsTable');
+        const disabilitiesTable = document.getElementById('disabilitiesTable');
+
+        let internsChartInstance = null;
+        let disabilitiesChartInstance = null;
+
+        generateReportBtn.addEventListener('click', () => {
+            const file = csvFileInput.files[0];
+            if (!file) {
+                showError("Por favor, selecione um arquivo CSV primeiro.");
+                return;
+            }
+            
+            // Show loading state if needed
+            welcomeMessageDiv.classList.add('hidden');
+            resultsDiv.classList.add('hidden');
+            downloadSection.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    try {
+                        processData(results.data);
+                    } catch (error) {
+                         showError(`Erro ao processar o arquivo: ${error.message}. Verifique o formato do CSV.`);
+                         console.error(error);
+                    }
+                },
+                error: (error) => {
+                    showError(`Erro ao ler o arquivo: ${error.message}`);
+                    console.error(error);
+                }
+            });
+        });
+
+        downloadPDFBtn.addEventListener('click', async () => {
+            try {
+                await generatePDF();
+            } catch (error) {
+                showError(`Erro ao gerar PDF: ${error.message}`);
+                console.error(error);
+            }
+        });
+
+        function showError(message) {
+            errorMessageDiv.textContent = message;
+            errorMessageDiv.classList.remove('hidden');
+            resultsDiv.classList.add('hidden');
+            downloadSection.classList.add('hidden');
+        }
+
+        function processData(data) {
+            // Clean and type-cast data
+            const cleanedData = data.map(row => ({
+                ...row,
+                ativos: parseInt(row.ativos, 10) || 0
+            })).filter(row => row.Nome_Empresa);
+
+            // --- Interns Calculation ---
+            const internsEligible = cleanedData
+                .filter(row => 
+                    row['Regime federal']?.toUpperCase() !== 'SIMPLES NACIONAL' && 
+                    row['Regime federal']?.toUpperCase() !== 'SEM REGIME' &&
+                    row.ativos >= 7
+                )
+                .map(row => ({
+                    ...row,
+                    vagas: Math.ceil(row.ativos * 0.05)
+                }));
+
+            // --- Disabilities Calculation ---
+            const disabilitiesEligible = cleanedData
+                .filter(row => row.ativos >= 100)
+                .map(row => {
+                    let percentage = 0;
+                    if (row.ativos >= 100 && row.ativos <= 200) percentage = 0.02;
+                    else if (row.ativos >= 201 && row.ativos <= 500) percentage = 0.03;
+                    else if (row.ativos >= 501 && row.ativos <= 1000) percentage = 0.04;
+                    else if (row.ativos > 1000) percentage = 0.05;
+                    return {
+                        ...row,
+                        vagas: Math.ceil(row.ativos * percentage)
+                    };
+                });
+
+            // --- Display Results ---
+            resultsDiv.classList.remove('hidden');
+            
+            // Populate Interns
+            if(internsEligible.length > 0) {
+                internsEligible.sort((a, b) => b.vagas - a.vagas);
+                populateTable(internsTable, internsEligible);
+                createChart('internsChart', internsEligible.slice(0, 10), 'Nº de Estagiários a Contratar', 'rgba(59, 130, 246, 0.7)', 'internsChartInstance');
+                internsSection.classList.remove('hidden');
+            } else {
+                internsSection.classList.add('hidden');
+            }
+
+            // Populate Disabilities
+            if(disabilitiesEligible.length > 0) {
+                disabilitiesEligible.sort((a, b) => b.vagas - a.vagas);
+                populateTable(disabilitiesTable, disabilitiesEligible);
+                createChart('disabilitiesChart', disabilitiesEligible.slice(0, 10), 'Nº de PCDs a Contratar', 'rgba(236, 72, 153, 0.7)', 'disabilitiesChartInstance');
+                disabilitiesSection.classList.remove('hidden');
+            } else {
+                disabilitiesSection.classList.add('hidden');
+            }
+
+            if (internsEligible.length === 0 && disabilitiesEligible.length === 0) {
+                showError("Nenhuma empresa encontrada que corresponda aos critérios de contratação nos dados fornecidos.");
+            } else {
+                // Show download button when results are available
+                downloadSection.classList.remove('hidden');
+            }
+        }
+
+        function populateTable(tableBody, data) {
+            tableBody.innerHTML = ''; // Clear previous data
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900 break-words">${row.Nome_Empresa}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${row.ativos}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-bold">${row.vagas}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        async function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            
+            // Get current date for filename
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
+            const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '-');
+            
+            // Add title page
+            pdf.setFontSize(20);
+            pdf.text('Relatório de Necessidade de Contratação', 105, 30, { align: 'center' });
+            
+            pdf.setFontSize(12);
+            pdf.text(`Gerado em: ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR')}`, 105, 45, { align: 'center' });
+            
+            let yPosition = 70;
+            
+            // Check if interns section is visible
+            const internsSection = document.getElementById('interns-section');
+            if (!internsSection.classList.contains('hidden')) {
+                // Add interns section
+                pdf.setFontSize(16);
+                pdf.text('Relatório de Contratação de Estagiários', 20, yPosition);
+                yPosition += 10;
+                
+                pdf.setFontSize(10);
+                pdf.text('Empresas com regime diferente de "Simples Nacional" e "Sem Regime", com 7 ou mais funcionários.', 20, yPosition);
+                yPosition += 5;
+                pdf.text('A cota é de 5% do total de ativos, arredondada para cima.', 20, yPosition);
+                yPosition += 15;
+                
+                // Capture interns chart
+                const internsCanvas = document.getElementById('internsChart');
+                const internsImgData = internsCanvas.toDataURL('image/png');
+                pdf.addImage(internsImgData, 'PNG', 20, yPosition, 170, 80);
+                yPosition += 90;
+                
+                // Add interns table
+                const internsTable = document.getElementById('internsTable');
+                const internsRows = Array.from(internsTable.querySelectorAll('tr'));
+                
+                if (internsRows.length > 0) {
+                    pdf.setFontSize(12);
+                    pdf.text('Tabela de Estagiários:', 20, yPosition);
+                    yPosition += 10;
+                    
+                    // Table headers
+                    pdf.setFontSize(10);
+                    pdf.text('Empresa', 20, yPosition);
+                    pdf.text('Ativos', 130, yPosition);
+                    pdf.text('Vagas', 160, yPosition);
+                    yPosition += 8;
+                    
+                    // Table data
+                    internsRows.forEach((row, index) => {
+                        if (yPosition > 250) {
+                            pdf.addPage();
+                            yPosition = 20;
+                        }
+                        
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 3) {
+                            const empresa = cells[0].textContent.trim();
+                            const ativos = cells[1].textContent.trim();
+                            const vagas = cells[2].textContent.trim();
+                            
+                            // Truncate long company names
+                            const empresaTruncated = empresa.length > 60 ? empresa.substring(0, 57) + '...' : empresa;
+                            
+                            pdf.text(empresaTruncated, 20, yPosition);
+                            pdf.text(ativos, 130, yPosition);
+                            pdf.text(vagas, 160, yPosition);
+                            yPosition += 6;
+                        }
+                    });
+                }
+                
+                yPosition += 20;
+            }
+            
+            // Check if disabilities section is visible
+            const disabilitiesSection = document.getElementById('disabilities-section');
+            if (!disabilitiesSection.classList.contains('hidden')) {
+                // Add new page if needed
+                if (yPosition > 180) {
+                    pdf.addPage();
+                    yPosition = 20;
+                }
+                
+                // Add disabilities section
+                pdf.setFontSize(16);
+                pdf.text('Relatório de Contratação de PCD', 20, yPosition);
+                yPosition += 10;
+                
+                pdf.setFontSize(10);
+                pdf.text('Empresas com 100 ou mais funcionários.', 20, yPosition);
+                yPosition += 5;
+                pdf.text('A cota varia de 2% a 5% com base no total de ativos, arredondada para cima.', 20, yPosition);
+                yPosition += 15;
+                
+                // Capture disabilities chart
+                const disabilitiesCanvas = document.getElementById('disabilitiesChart');
+                const disabilitiesImgData = disabilitiesCanvas.toDataURL('image/png');
+                pdf.addImage(disabilitiesImgData, 'PNG', 20, yPosition, 170, 80);
+                yPosition += 90;
+                
+                // Add disabilities table
+                const disabilitiesTable = document.getElementById('disabilitiesTable');
+                const disabilitiesRows = Array.from(disabilitiesTable.querySelectorAll('tr'));
+                
+                if (disabilitiesRows.length > 0) {
+                    pdf.setFontSize(12);
+                    pdf.text('Tabela de PCDs:', 20, yPosition);
+                    yPosition += 10;
+                    
+                    // Table headers
+                    pdf.setFontSize(10);
+                    pdf.text('Empresa', 20, yPosition);
+                    pdf.text('Ativos', 130, yPosition);
+                    pdf.text('Vagas PCD', 160, yPosition);
+                    yPosition += 8;
+                    
+                    // Table data
+                    disabilitiesRows.forEach((row, index) => {
+                        if (yPosition > 250) {
+                            pdf.addPage();
+                            yPosition = 20;
+                        }
+                        
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 3) {
+                            const empresa = cells[0].textContent.trim();
+                            const ativos = cells[1].textContent.trim();
+                            const vagas = cells[2].textContent.trim();
+                            
+                            // Truncate long company names
+                            const empresaTruncated = empresa.length > 60 ? empresa.substring(0, 57) + '...' : empresa;
+                            
+                            pdf.text(empresaTruncated, 20, yPosition);
+                            pdf.text(ativos, 130, yPosition);
+                            pdf.text(vagas, 160, yPosition);
+                            yPosition += 6;
+                        }
+                    });
+                }
+            }
+            
+            // Save the PDF
+            pdf.save(`relatorio-contratacao-${dateStr}-${timeStr}.pdf`);
+        }
+
+        function createChart(canvasId, data, label, color, instanceVar) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const chartData = {
+                labels: data.map(row => row.Nome_Empresa),
+                datasets: [{
+                    label: label,
+                    data: data.map(row => row.vagas),
+                    backgroundColor: color,
+                    borderColor: color.replace('0.7', '1'),
+                    borderWidth: 1
+                }]
+            };
+
+            if (window[instanceVar]) {
+                window[instanceVar].destroy();
+            }
+
+            window[instanceVar] = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: `Top 10 Empresas para Contratação`,
+                            font: {
+                                size: 16
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                             ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                maxRotation: 0,
+                                callback: function(value, index, values) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.length > 30) {
+                                        return label.substring(0, 27) + '...';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
